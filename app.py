@@ -2,7 +2,8 @@ import streamlit as st
 import pandas as pd
 import os
 from datetime import datetime
-
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(
     page_title="Validación de Indicadores Ambientales",
@@ -195,37 +196,41 @@ if st.session_state.etapa_evaluacion:
                 if preguntas_faltantes > 0:
                     st.error(f"❌ ERROR: No se puede enviar. Faltan {preguntas_faltantes} respuestas por marcar. Por favor revise que todas las filas tengan una opción seleccionada.")
                 else:
-                    # Si todo está completo, guardamos
-                    datos_guardar = []
-                    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    
-                    for key, val in st.session_state.items():
-                        if key.startswith("EVAL|") and val is not None:
-                            parts = key.split("|")
-                            if len(parts) == 4:
-                                _, cat, ind, crit = parts
-                                datos_guardar.append({
-                                    "Fecha": timestamp,
-                                    "Experto": nombre,
-                                    "Profesion": profesion,
-                                    "Nivel Academico": nivel_acad,
-                                    "Provincia": provincia,
-                                    "Experiencia": experiencia,
-                                    "Categoría": cat,
-                                    "Indicador": ind,
-                                    "Origen": "Nuevo" if "(NUEVO)" in ind else "Predefinido",
-                                    "Criterio": crit,
-                                    "Evaluación": val
-                                })
-                    
-                    df = pd.DataFrame(datos_guardar)
-                    archivo_csv = "resultados_encuesta_tfg.csv"
-                    
-                    if not os.path.isfile(archivo_csv):
-                        df.to_csv(archivo_csv, index=False)
-                    else:
-                        df.to_csv(archivo_csv, mode='a', header=False, index=False)
-                    
-                    st.balloons()
-                    st.success(f"¡Muchas gracias, {nombre}! Su encuesta ha sido enviada exitosamente.")
-                    st.info("Puede cerrar esta pestaña.")
+                   # --- CONEXIÓN CON GOOGLE SHEETS ---
+                    try:
+                        # Definir alcance
+                        scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
+                        # Cargar credenciales desde Secrets
+                        creds_dict = dict(st.secrets["gcp_service_account"])
+                        creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+                        client = gspread.authorize(creds)
+                        
+                        # Abrir la hoja (Asegúrate que el nombre sea IDÉNTICO)
+                        sheet = client.open("Base_Datos_TFG").sheet1
+                        
+                        # Preparar datos para subir fila por fila
+                        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                        
+                        for key, val in st.session_state.items():
+                            if key.startswith("EVAL|") and val is not None:
+                                parts = key.split("|")
+                                if len(parts) == 4:
+                                    _, cat, ind, crit = parts
+                                    
+                                    # Crear la fila
+                                    fila = [
+                                        timestamp, nombre, profesion, nivel_acad, provincia, 
+                                        experiencia, cat, ind, 
+                                        "Nuevo" if "(NUEVO)" in ind else "Predefinido", 
+                                        crit, val
+                                    ]
+                                    # Enviar a Google Sheets
+                                    sheet.append_row(fila)
+                        
+                        st.balloons()
+                        st.success(f"¡Muchas gracias, {nombre}! Su encuesta ha sido enviada y guardada en la nube exitosamente.")
+                        st.info("Puede cerrar esta pestaña.")
+                        
+                    except Exception as e:
+                        st.error("⚠️ Ocurrió un error al conectar con la base de datos.")
+                        st.error(f"Detalle del error: {e}")
