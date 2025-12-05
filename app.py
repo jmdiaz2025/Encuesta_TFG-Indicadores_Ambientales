@@ -1,0 +1,231 @@
+import streamlit as st
+import pandas as pd
+import os
+from datetime import datetime
+
+# --- CONFIGURACIÓN DE PÁGINA ---
+st.set_page_config(
+    page_title="Validación de Indicadores Ambientales",
+    page_icon="🛣️",
+    layout="wide"
+)
+
+# --- ESTILOS CSS PERSONALIZADOS ---
+st.markdown("""
+    <style>
+    .stRadio > label {font-weight: bold; color: #4A4F3E;}
+    .big-font {font-size:20px !important; color: #D95D4E; font-weight: bold;}
+    div[data-testid="stExpander"] details summary p {
+        font-size: 1.1rem;
+        font-weight: 600;
+        color: #4A4F3E;
+    }
+    div.stButton > button:first-child {
+        background-color: #D95D4E;
+        color: white;
+        font-size: 18px;
+        border-radius: 10px;
+        padding: 10px 24px;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+# --- INICIALIZACIÓN DEL ESTADO ---
+if 'etapa_evaluacion' not in st.session_state:
+    st.session_state.etapa_evaluacion = False
+
+# --- DATOS: LISTA MAESTRA DE INDICADORES ---
+INDICADORES_MAESTROS = {
+    "Calidad del Aire": [
+        "Monitoreo de gases", "Mediciones de calidad del aire", "Cantidad de reportes de material particulado",
+        "N° riegos realizados / N° riegos programados", "N° mallas cortaviento implementadas / N° mallas cortaviento programadas",
+        "N° inspecciones realizadas en acopio de materiales / N° inspecciones programadas", "N° de lavados de llantas realizados / N° lavados de llantas programados"
+    ],
+    "Calidad del Agua": [
+        "Mediciones de calidad del agua", "N° de tomas de agua ilegales identificadas", "N° de conexiones ilegales a cuerpos de agua",
+        "Cantidad de sistemas de drenaje en sitio", "Cantidad de obras para manejo de aguas en sitio", "Reportes de mantenimiento de obras de drenaje",
+        "Plan de manejo de aguas residuales", "N° de inspecciones de manejo de aguas residuales / N° inspecciones programadas"
+    ],
+    "Gestión de Suelos y Erosión": [
+        "Construcción de obras de control de erosión (Mínimo una trampa por escombrera)", "Reporte de estabilidad de taludes (escombreras)",
+        "Muestreos de suelo en plantel (cierre técnico)", "Cantidad de obras en sitio (Cuencos temporales)",
+        "Cantidad de reportes de sedimentos en áreas de trabajo y cauces receptores", "Registros de protección de taludes"
+    ],
+    "Biodiversidad y Vegetación": [
+        "Registro fotográfico de la reforestación (cierre técnico)", "Cantidad de árboles sembrados y especies (cierre técnico)",
+        "Zonas recreativas con recuperación de vegetación (cierre técnico)", "N° de permisos de tala, poda y reubicación",
+        "Registro fotográfico de la reubicación de fauna", "Registros de mantenimiento de cobertura vegetal en taludes",
+        "Registros de programas de reforestación", "Registros de rescate y reubicación de fauna", "Registros de permisos de aprovechamiento forestal"
+    ],
+    "Gestión de Residuos": [
+        "Planos as built y certificado de cierre técnico (escombreras)", "N° de obras temporales (planteles) con cierre técnico",
+        "Autorización de cierre técnico del plantel (regente)", "Indicadores de Uso y Cierre Técnico de Escombreras",
+        "Indicadores de Instalación y Cierre de Obras Temporales", "Plan de Manejo de Residuos (PMR)",
+        "Plan de gestión de residuos peligrosos", "N° de inspecciones de manejo de residuos / N° inspecciones programadas"
+    ],
+    "Gestión de Sustancias y Derrames": [
+        "N° de incidentes por derrames de hidrocarburos", "N° de eventos de capacitación en manejo de hidrocarburos",
+        "Registros de mantenimiento de filtros, piletas y atención de derrames", "Plan de manejo de sustancias peligrosas",
+        "N° de reportes de derrames atendidos / N° total de derrames", "N° de inspecciones de manejo de sustancias peligrosas / N° inspecciones programadas"
+    ],
+    "Patrimonio Cultural": [
+        "N° de visitas del profesional en arqueología (si es necesario)", "N° de evidencia arqueológica", "Indicadores de Arqueología"
+    ],
+    "Gestión Socioeconómica y SSO": [
+        "N° de quejas de terceros", "N° de multas o sanciones a transportistas", "Monitoreo de ruido",
+        "Nº de señales viales colocadas y Nº de pasos peatonales", "Registros de colocación de vallas de protección",
+        "Registros de capacitación al personal de la obra", "Cantidad de reportes de quejas por ruido y vibraciones",
+        "Registro de permiso del Ministerio de Salud para campamentos", "N° de inspecciones de manejo de ruido / N° inspecciones programadas",
+        "N° de inspecciones socioambientales / N° programadas", "N° de inspecciones de salud y seguridad / N° programadas",
+        "N° de reportes de accidentes / N° total de horas trabajadas"
+    ],
+    "Gestión de Proyecto y Cumplimiento": [
+        "Registro fotográfico de limpieza de accesos", "N° de vehículos con revisión técnica vehicular (RTV) al día",
+        "Reporte de regencia ambiental (cierre técnico)", "Cierre técnico al final del proyecto: Notas de los profesionales...",
+        "Planos de diseño del proyecto", "Registros de revisión de maquinaria y equipo", "Reportes de inspección de fugas en maquinaria y equipo"
+    ]
+}
+
+# --- TÍTULO ---
+st.title("🛣️ Validación de Indicadores Ambientales para Proyectos Viales")
+st.markdown("""
+**Instrucciones:**
+1. Complete sus datos profesionales.
+2. Seleccione y proponga indicadores clave (Etapa de Selección).
+3. Habilite la evaluación para calificar los indicadores elegidos (Etapa de Evaluación).
+""")
+st.divider()
+
+# --- SECCIÓN 1: DATOS DEL EXPERTO ---
+st.subheader("I. Datos del Profesional")
+col1, col2 = st.columns(2)
+with col1:
+    nombre = st.text_input("Nombre Completo (Opcional)")
+    profesion = st.text_input("Profesión / Especialidad", placeholder="Ej. Ingeniero Civil, Biólogo...")
+    nivel_acad = st.selectbox("Nivel Académico", ["Bachillerato", "Licenciatura", "Maestría", "Doctorado"])
+with col2:
+    provincia = st.selectbox("Provincia de Residencia/Trabajo", ["San José", "Alajuela", "Cartago", "Heredia", "Guanacaste", "Puntarenas", "Limón", "Fuera de Costa Rica"])
+    # CORRECCIÓN 1: Nueva opción de experiencia
+    experiencia = st.selectbox("Años de Experiencia en Infraestructura", 
+                               ["No tengo experiencia en infraestructura", "Menos de 5 años", "5 - 10 años", "Más de 10 años"])
+
+st.divider()
+
+# --- SECCIÓN 2: SELECCIÓN DE INDICADORES ---
+st.subheader("II. Selección de Indicadores")
+st.info("Seleccione al menos 2 indicadores por categoría. Si falta alguno, agréguelo.")
+
+dict_seleccionados = {}
+dict_nuevos = {}
+
+for categoria, lista_indicadores in INDICADORES_MAESTROS.items():
+    with st.expander(f"📂 Categoría: {categoria}", expanded=False):
+        sel = st.multiselect(f"Seleccione indicadores clave para {categoria}:", options=lista_indicadores, key=f"sel_{categoria}")
+        dict_seleccionados[categoria] = sel
+        
+        if len(sel) > 0 and len(sel) < 2:
+            st.warning("⚠️ Se recomienda seleccionar un mínimo de 2 indicadores.")
+
+        col_new1, col_new2 = st.columns(2)
+        n1 = col_new1.text_input(f"Indicador Adicional 1", key=f"new1_{categoria}", placeholder="Opcional")
+        n2 = col_new2.text_input(f"Indicador Adicional 2", key=f"new2_{categoria}", placeholder="Opcional")
+        
+        nuevos_lista = []
+        if n1: nuevos_lista.append(f"(NUEVO) {n1}")
+        if n2: nuevos_lista.append(f"(NUEVO) {n2}")
+        dict_nuevos[categoria] = nuevos_lista
+
+# --- BOTÓN INTERMEDIO ---
+st.markdown("---")
+col_b1, col_b2, col_b3 = st.columns([1, 2, 1])
+with col_b2:
+    if st.button("⬇️ Finalizar Selección y Habilitar Evaluación Likert ⬇️", use_container_width=True):
+        st.session_state.etapa_evaluacion = True
+        st.rerun()
+
+# --- SECCIÓN 3: EVALUACIÓN LIKERT ---
+if st.session_state.etapa_evaluacion:
+    st.markdown("---")
+    st.subheader("III. Evaluación de Indicadores Seleccionados")
+    
+    # CORRECCIÓN 2: Mensaje de alerta claro
+    st.warning("⚠️ IMPORTANTE: Para enviar la encuesta, es obligatorio marcar una opción (DA, N, ED) para CADA UNO de los 4 criterios en TODOS los indicadores listados abajo. Si falta alguna casilla, el sistema no permitirá el envío.")
+    
+    with st.form("form_evaluacion_final"):
+        criterios = ["Claridad en Redacción", "Pertinencia Ambiental", "Factibilidad de Medición", "Relevancia Control"]
+        opciones_likert = ["De Acuerdo (DA)", "Neutro (N)", "En Desacuerdo (ED)"]
+        hay_items_para_evaluar = False
+        
+        # Iteramos para mostrar la evaluación
+        for categoria in INDICADORES_MAESTROS.keys():
+            items_totales = dict_seleccionados.get(categoria, []) + dict_nuevos.get(categoria, [])
+            
+            if items_totales:
+                hay_items_para_evaluar = True
+                st.markdown(f"#### 🔹 {categoria}")
+                for ind in items_totales:
+                    st.markdown(f"**Indicador: {ind}**")
+                    cols = st.columns(4)
+                    for i, crit in enumerate(criterios):
+                        cols[i].radio(crit, opciones_likert, key=f"EVAL|{categoria}|{ind}|{crit}", horizontal=True, index=None)
+                st.markdown("---")
+
+        submitted = st.form_submit_button("🚀 Enviar Encuesta Final")
+        
+        if submitted:
+            # Validaciones de Datos Personales
+            if not nombre or not profesion:
+                st.error("⚠️ Por favor suba al inicio y complete su Nombre y Profesión.")
+            elif not hay_items_para_evaluar:
+                st.error("⚠️ No ha seleccionado ningún indicador para evaluar.")
+            else:
+                # CORRECCIÓN 3: Validación Estricta de Completitud (No enviar si faltan respuestas)
+                preguntas_faltantes = 0
+                
+                # Revisamos uno por uno si fueron contestados
+                for categoria in INDICADORES_MAESTROS.keys():
+                    items = dict_seleccionados.get(categoria, []) + dict_nuevos.get(categoria, [])
+                    for ind in items:
+                        for crit in criterios:
+                            key_check = f"EVAL|{categoria}|{ind}|{crit}"
+                            respuesta = st.session_state.get(key_check)
+                            if respuesta is None:
+                                preguntas_faltantes += 1
+                
+                if preguntas_faltantes > 0:
+                    st.error(f"❌ ERROR: No se puede enviar. Faltan {preguntas_faltantes} respuestas por marcar. Por favor revise que todas las filas tengan una opción seleccionada.")
+                else:
+                    # Si todo está completo, guardamos
+                    datos_guardar = []
+                    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    
+                    for key, val in st.session_state.items():
+                        if key.startswith("EVAL|") and val is not None:
+                            parts = key.split("|")
+                            if len(parts) == 4:
+                                _, cat, ind, crit = parts
+                                datos_guardar.append({
+                                    "Fecha": timestamp,
+                                    "Experto": nombre,
+                                    "Profesion": profesion,
+                                    "Nivel Academico": nivel_acad,
+                                    "Provincia": provincia,
+                                    "Experiencia": experiencia,
+                                    "Categoría": cat,
+                                    "Indicador": ind,
+                                    "Origen": "Nuevo" if "(NUEVO)" in ind else "Predefinido",
+                                    "Criterio": crit,
+                                    "Evaluación": val
+                                })
+                    
+                    df = pd.DataFrame(datos_guardar)
+                    archivo_csv = "resultados_encuesta_tfg.csv"
+                    
+                    if not os.path.isfile(archivo_csv):
+                        df.to_csv(archivo_csv, index=False)
+                    else:
+                        df.to_csv(archivo_csv, mode='a', header=False, index=False)
+                    
+                    st.balloons()
+                    st.success(f"¡Muchas gracias, {nombre}! Su encuesta ha sido enviada exitosamente.")
+                    st.info("Puede cerrar esta pestaña.")
